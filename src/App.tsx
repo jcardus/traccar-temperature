@@ -99,7 +99,7 @@ function transformDeviceToFleetItem(device: Device, position?: Position): FleetI
   const posAttrs = position?.attributes ?? {};
   const devAttrs = device.attributes ?? {};
 
-  const tempC = posAttrs.temp1 ?? posAttrs.temperature ?? devAttrs.temp1 ?? devAttrs.bleTemp1 ?? 0;
+  const tempC = posAttrs.temp1 ?? posAttrs.temperature ?? devAttrs.temp1 ?? devAttrs.bleTemp1;
   const door = posAttrs.door ?? posAttrs.io2 ?? devAttrs.door ?? devAttrs.io2 ?? 0;
   const setpoint = posAttrs.setpoint ?? posAttrs.targetTemp ?? devAttrs.setpoint ?? devAttrs.targetTemp ?? -15;
 
@@ -107,7 +107,7 @@ function transformDeviceToFleetItem(device: Device, position?: Position): FleetI
     id: device.id,
     placa: device.name || device.uniqueId,
     last: position ? new Date(position.fixTime || position.serverTime) : new Date(device.lastUpdate),
-    tempC: typeof tempC === 'number' ? tempC : parseFloat(tempC) || 0,
+    tempC: typeof tempC === 'number' ? tempC : parseFloat(tempC) || undefined,
     door: typeof door === 'number' ? door : parseInt(door) || 0,
     setpoint: typeof setpoint === 'number' ? setpoint : parseFloat(setpoint) || -15,
   };
@@ -210,7 +210,7 @@ function FleetTable({ data, onSelect }: { data: any[]; onSelect: (id: number) =>
                 <TableRow key={v.id} className="hover:bg-gray-50">
                   <TableCell className="font-medium">{v.placa}</TableCell>
                   <TableCell>{new Date(v.last).toLocaleString()}</TableCell>
-                  <TableCell className="text-right">{v.tempC.toFixed(1)}</TableCell>
+                  <TableCell className="text-right">{v.tempC && v.tempC.toFixed(1)}</TableCell>
                   <TableCell><FaixaBadge s={faixa} /></TableCell>
                   <TableCell><NivelBadge nivel={nivel as any} /></TableCell>
                   <TableCell>{v.door ? "Aberta" : "Fechada"}</TableCell>
