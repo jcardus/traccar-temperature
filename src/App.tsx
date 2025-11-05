@@ -42,6 +42,26 @@ interface Device {
   attributes?: Record<string, any>;
 }
 
+interface Position {
+  id: number;
+  deviceId: number;
+  protocol: string;
+  deviceTime: string;
+  fixTime: string;
+  serverTime: string;
+  outdated: boolean;
+  valid: boolean;
+  latitude: number;
+  longitude: number;
+  altitude: number;
+  speed: number;
+  course: number;
+  address?: string;
+  accuracy?: number;
+  network?: any;
+  attributes?: Record<string, any>;
+}
+
 interface FleetItem {
   id: number;
   placa: string;
@@ -74,16 +94,19 @@ const cores: Record<string, string> = {
 };
 
 // ---------- Data Transformation ----------
-function transformDeviceToFleetItem(device: Device): FleetItem {
-  // Extract temperature from attributes (adjust attribute name as needed)
-  const tempC = device.attributes?.temp1 ?? device.attributes?.temperature ?? 0;
-  const door = device.attributes?.door ?? device.attributes?.io2 ?? 0;
-  const setpoint = device.attributes?.setpoint ?? device.attributes?.targetTemp ?? -15;
+function transformDeviceToFleetItem(device: Device, position?: Position): FleetItem {
+  // Extract temperature from position attributes first, fallback to device attributes
+  const posAttrs = position?.attributes ?? {};
+  const devAttrs = device.attributes ?? {};
+
+  const tempC = posAttrs.temp1 ?? posAttrs.temperature ?? devAttrs.temp1 ?? devAttrs.bleTemp1 ?? 0;
+  const door = posAttrs.door ?? posAttrs.io2 ?? devAttrs.door ?? devAttrs.io2 ?? 0;
+  const setpoint = posAttrs.setpoint ?? posAttrs.targetTemp ?? devAttrs.setpoint ?? devAttrs.targetTemp ?? -15;
 
   return {
     id: device.id,
     placa: device.name || device.uniqueId,
-    last: new Date(device.lastUpdate),
+    last: position ? new Date(position.fixTime || position.serverTime) : new Date(device.lastUpdate),
     tempC: typeof tempC === 'number' ? tempC : parseFloat(tempC) || 0,
     door: typeof door === 'number' ? door : parseInt(door) || 0,
     setpoint: typeof setpoint === 'number' ? setpoint : parseFloat(setpoint) || -15,
@@ -331,10 +354,28 @@ export default function App() {
       try {
         setLoading(true);
         setError(null);
-        const response = await fetch('/api/devices');
 
-        const devices: Device[] = await response.json();
-        const fleetData = devices.map(transformDeviceToFleetItem);
+        // Fetch both devices and positions in parallel
+        const [devicesResponse, positionsResponse] = await Promise.all([
+          fetch('/api/devices'),
+          fetch('/api/positions')
+        ]);
+
+        const devices: Device[] = await devicesResponse.json();
+        const positions: Position[] = await positionsResponse.json();
+
+        // Create a map of positions by deviceId for quick lookup
+        const positionsByDevice = new Map<number, Position>();
+        positions.forEach(pos => {
+          positionsByDevice.set(pos.deviceId, pos);
+        });
+
+        // Join devices with their positions
+        const fleetData = devices.map(device => {
+          const position = positionsByDevice.get(device.id);
+          return transformDeviceToFleetItem(device, position);
+        });
+
         setFleet(fleetData);
 
         // Auto-select first device if none selected
@@ -407,8 +448,8 @@ export default function App() {
 
       <div className="text-xs text-gray-500">
         <p>
-          Conectado à API Traccar. Dados obtidos de <code>/api/devices</code>.
-          Atributos mapeados: <code>attributes.temp1 → tempC</code>, <code>attributes.door → door</code>.
+          Conectado à API Traccar. Dados obtidos de <code>/api/devices</code> e <code>/api/positions</code>.
+          Atributos mapeados: <code>position.attributes.temp1 → tempC</code>, <code>position.attributes.door → door</code>.
         </p>
       </div>
     </div>
