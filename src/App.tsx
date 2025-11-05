@@ -356,12 +356,12 @@ export default function App() {
         setError(null);
 
         // Fetch both devices and positions in parallel
-        const host = import.meta.env.VITE_API_HOST || 'gps.frotaweb.com';
+        const host = import.meta.env.VITE_API_HOST || 'dash.frotaweb.com';
         const params = new URLSearchParams(window.location.search);
         const token = params.get('token');
         const [devicesResponse, positionsResponse] = await Promise.all([
-          fetch(`http://${host}/api/devices`, {headers: {authorization: 'Bearer ' + token}}),
-          fetch(`http://${host}/api/positions`, {headers: {authorization: 'Bearer ' + token}})
+          fetch(`https://${host}/api/devices`, {headers: {authorization: 'Bearer ' + token}}),
+          fetch(`https://${host}/api/positions`, {headers: {authorization: 'Bearer ' + token}})
         ]);
 
         const devices: Device[] = await devicesResponse.json();
