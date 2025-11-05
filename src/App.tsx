@@ -210,8 +210,8 @@ function VehicleDetail({ id, fleet, historicalData }: { id: number; fleet: Fleet
       return { min: 0, max: 0, pctFaixa: 0 };
     }
     const temps = serie.map((s: any) => s.tempC);
-    const min = Math.min(...temps);
-    const max = Math.max(...temps);
+    const min = parseFloat(Math.min(...temps).toFixed(1));
+    const max = parseFloat(Math.max(...temps).toFixed(1));
     const emFaixa = serie.filter((s: any) => s.tempC >= -18 && s.tempC <= -7).length;
     const pctFaixa = Math.round((emFaixa / serie.length) * 1000) / 10;
     return { min, max, pctFaixa };
@@ -263,8 +263,8 @@ function VehicleDetail({ id, fleet, historicalData }: { id: number; fleet: Fleet
               <LineChart data={serie} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="label" interval={5} />
-                <YAxis domain={[-25, 20]} tickFormatter={(v) => `${v}°`} />
-                <Tooltip formatter={(v: any) => `${v} °C`} labelFormatter={(l) => `Hora: ${l}`} />
+                <YAxis domain={[-25, 20]} tickFormatter={(v) => `${Number(v).toFixed(1)}°`} />
+                <Tooltip formatter={(v: any) => `${Number(v).toFixed(1)} °C`} labelFormatter={(l) => `Hora: ${l}`} />
                 {/* Bandas da faixa alvo */}
                 <ReferenceArea y1={-18} y2={-7} fill="#16a34a" fillOpacity={0.08} />
                 {/* Linhas de corte */}
