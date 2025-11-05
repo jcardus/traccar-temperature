@@ -288,59 +288,79 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [historicalData, setHistoricalData] = useState<Record<number, any[]>>({});
+  const [lastUpdate, setLastUpdate] = useState<Date>(new Date());
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  useEffect(() => {
-    async function fetchDevices() {
-      try {
+  // Polling interval in milliseconds (30 seconds)
+  const POLLING_INTERVAL = 30000;
+
+  const fetchDevices = async (showLoader = true) => {
+    try {
+      if (showLoader) {
         setLoading(true);
-        setError(null);
-
-        // Fetch both devices and positions in parallel
-        const host = 'web.rastreosat.com.br';
-        const params = new URLSearchParams(window.location.search);
-        const token = params.get('token');
-        const [devicesResponse, positionsResponse] = await Promise.all([
-          fetch(`https://${host}/api/devices`, {headers: {authorization: 'Bearer ' + token}}),
-          fetch(`https://${host}/api/positions`, {headers: {authorization: 'Bearer ' + token}})
-        ]);
-
-        const devices: Device[] = await devicesResponse.json();
-        const positions: Position[] = await positionsResponse.json();
-
-        // Create a map of positions by deviceId for quick lookup
-        const positionsByDevice = new Map<number, Position>();
-        positions.forEach(pos => {
-          positionsByDevice.set(pos.deviceId, pos);
-        });
-
-        // Join devices with their positions
-        const fleetData = devices.map(device => {
-          const position = positionsByDevice.get(device.id);
-          return transformDeviceToFleetItem(device, position);
-        });
-
-        setFleet(fleetData);
-
-        // Auto-select first device if none selected
-        if (fleetData.length > 0 && !selecionado) {
-          setSelecionado(fleetData[0].id);
-        }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch devices');
-        console.error('Error fetching devices:', err);
-      } finally {
-        setLoading(false);
+      } else {
+        setIsRefreshing(true);
       }
-    }
+      setError(null);
 
-    fetchDevices();
+      // Fetch both devices and positions in parallel
+      const host = 'web.rastreosat.com.br';
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('token');
+      const [devicesResponse, positionsResponse] = await Promise.all([
+        fetch(`https://${host}/api/devices`, {headers: {authorization: 'Bearer ' + token}}),
+        fetch(`https://${host}/api/positions`, {headers: {authorization: 'Bearer ' + token}})
+      ]);
+
+      const devices: Device[] = await devicesResponse.json();
+      const positions: Position[] = await positionsResponse.json();
+
+      // Create a map of positions by deviceId for quick lookup
+      const positionsByDevice = new Map<number, Position>();
+      positions.forEach(pos => {
+        positionsByDevice.set(pos.deviceId, pos);
+      });
+
+      // Join devices with their positions
+      const fleetData = devices.map(device => {
+        const position = positionsByDevice.get(device.id);
+        return transformDeviceToFleetItem(device, position);
+      });
+
+      setFleet(fleetData);
+      setLastUpdate(new Date());
+
+      // Auto-select first device if none selected
+      if (fleetData.length > 0 && !selecionado) {
+        setSelecionado(fleetData[0].id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch devices');
+      console.error('Error fetching devices:', err);
+    } finally {
+      setLoading(false);
+      setIsRefreshing(false);
+    }
+  };
+
+  // Initial load and polling for fleet data
+  useEffect(() => {
+    fetchDevices(true);
+
+    // Set up polling interval
+    const intervalId = setInterval(() => {
+      fetchDevices(false);
+    }, POLLING_INTERVAL);
+
+    // Cleanup interval on unmount
+    return () => clearInterval(intervalId);
   }, []);
 
-  // Fetch historical data when a vehicle is selected
+  // Fetch historical data only when detail tab is open
   useEffect(() => {
-    if (!selecionado) return;
+    if (!selecionado || tab !== 'detail') return;
 
-    async function fetchHistoricalData() {
+    const fetchHistoricalData = async () => {
       try {
         const host = 'web.rastreosat.com.br';
         const params = new URLSearchParams(window.location.search);
@@ -378,10 +398,19 @@ export default function App() {
       } catch (err) {
         console.error('Error fetching historical data:', err);
       }
-    }
+    };
 
-    fetchHistoricalData();
-  }, [selecionado]);
+    // Initial fetch
+    void fetchHistoricalData();
+
+    // Set up polling interval for historical data only when detail tab is active
+    const intervalId = setInterval(() => {
+      void fetchHistoricalData();
+    }, POLLING_INTERVAL);
+
+    // Cleanup interval when tab changes or device changes
+    return () => clearInterval(intervalId);
+  }, [selecionado, tab, POLLING_INTERVAL]);
 
   if (loading) {
     return (
@@ -414,12 +443,30 @@ export default function App() {
     );
   }
 
+  const handleManualRefresh = () => {
+    void fetchDevices(false);
+  };
+
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between">
         <div className="space-y-1">
           <h1 className="text-2xl font-bold tracking-tight">Controle de Temperatura – Baú Frigorífico</h1>
           <p className="text-sm text-gray-500">Faixa alvo <b>-18 a -7 °C</b> · Alarmes: <b>Leve ≥ -6</b> · <b>Médio ≥ -1</b> · <b>Grave ≥ +10</b></p>
+        </div>
+        <div className="flex items-center gap-3">
+          <div className="text-sm text-gray-500">
+            Última atualização: {lastUpdate.toLocaleTimeString()}
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleManualRefresh}
+            disabled={isRefreshing}
+          >
+            <RefreshCcw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+            Atualizar
+          </Button>
         </div>
       </div>
 
