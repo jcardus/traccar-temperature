@@ -113,33 +113,6 @@ function transformDeviceToFleetItem(device: Device, position?: Position): FleetI
   };
 }
 
-function gerarSerieTemp({ inicio, pontos = 72, media = -12, ruido = 1.2 }:{inicio:string|Date,pontos?:number,media?:number,ruido?:number}) {
-  const out: any[] = []; let t = new Date(inicio);
-  for (let i = 0; i < pontos; i++) {
-    const osc = Math.sin(i / 6) * 0.8;
-    const rand = (Math.random() - 0.5) * ruido * 2;
-    const door = (i % 9 === 0 || i % 9 === 1) ? 1 : 0; // abre às vezes
-    const temp = +(media + osc + rand + (door ? 1.6 : 0)).toFixed(1);
-    out.push({ ts: new Date(t), tempC: temp, door, fan: 1 });
-    t.setMinutes(t.getMinutes() + 30);
-  }
-  // injeta um trecho de superaquecimento em um dos veículos para ilustrar
-  return out;
-}
-
-const seriesPorVeiculo: Record<number, any[]> = {
-  101: gerarSerieTemp({ inicio: "2025-09-30T15:10:00-03:00" }),
-  102: gerarSerieTemp({ inicio: "2025-09-30T15:10:00-03:00", media: -5.5 }),
-  103: gerarSerieTemp({ inicio: "2025-09-30T15:10:00-03:00", media: -3.5 }).map((p, i) =>
-    i > 60 ? { ...p, tempC: 10 + Math.random() * 3, door: 1 } : p
-  ),
-};
-
-const eventsMock = [
-  { id: 90001, type: "alarm", time: "2025-09-30 17:12", deviceId: 101, tempC: -5.8, nivel: "leve", door: 1 },
-  { id: 90002, type: "alarm", time: "2025-09-30 18:55", deviceId: 102, tempC: -1.0, nivel: "medio", door: 0 },
-  { id: 90003, type: "alarm", time: "2025-09-30 20:58", deviceId: 103, tempC: 11.2, nivel: "grave", door: 1 },
-];
 
 // ---------- UI helpers ----------
 function NivelBadge({ nivel }: { nivel: "ok" | "leve" | "medio" | "grave" }) {
@@ -228,11 +201,14 @@ function FleetTable({ data, onSelect }: { data: any[]; onSelect: (id: number) =>
   );
 }
 
-function VehicleDetail({ id, fleet }: { id: number; fleet: FleetItem[] }) {
+function VehicleDetail({ id, fleet, historicalData }: { id: number; fleet: FleetItem[]; historicalData: Record<number, any[]> }) {
   const vehicle = fleet.find((v) => v.id === id)!;
-  const serie = seriesPorVeiculo[id]?.map((p) => ({ ...p, label: new Date(p.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })) || [];
+  const serie = (historicalData[id] || []).map((p) => ({ ...p, label: new Date(p.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }));
   const tempAtual = vehicle.tempC;
   const kpis = useMemo(() => {
+    if (serie.length === 0) {
+      return { min: 0, max: 0, pctFaixa: 0 };
+    }
     const temps = serie.map((s: any) => s.tempC);
     const min = Math.min(...temps);
     const max = Math.max(...temps);
@@ -240,8 +216,6 @@ function VehicleDetail({ id, fleet }: { id: number; fleet: FleetItem[] }) {
     const pctFaixa = Math.round((emFaixa / serie.length) * 1000) / 10;
     return { min, max, pctFaixa };
   }, [serie]);
-
-  const evs = eventsMock.filter((e) => e.deviceId === id);
 
   return (
     <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -303,41 +277,6 @@ function VehicleDetail({ id, fleet }: { id: number; fleet: FleetItem[] }) {
           </div>
         </CardContent>
       </Card>
-
-      <Card className="xl:col-span-3">
-        <div className="p-4 pb-0 flex items-center justify-between">
-          <h3 className="font-semibold">Eventos (mock)</h3>
-        </div>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Quando</TableHead>
-                <TableHead>Nível</TableHead>
-                <TableHead>Temp</TableHead>
-                <TableHead>Porta</TableHead>
-                <TableHead>Descrição</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {evs.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center text-gray-500">Sem eventos no período.</TableCell>
-                </TableRow>
-              )}
-              {evs.map((e) => (
-                <TableRow key={e.id}>
-                  <TableCell>{e.time}</TableCell>
-                  <TableCell><NivelBadge nivel={e.nivel as any} /></TableCell>
-                  <TableCell>{e.tempC.toFixed(1)} °C</TableCell>
-                  <TableCell>{e.door ? "Aberta" : "Fechada"}</TableCell>
-                  <TableCell>{e.nivel === "grave" ? "Temperatura perigosa (≥ +10 °C)" : e.nivel === "medio" ? "Acima de -1 °C" : "Acima de -6 °C"}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
     </div>
   );
 }
@@ -348,6 +287,7 @@ export default function App() {
   const [fleet, setFleet] = useState<FleetItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [historicalData, setHistoricalData] = useState<Record<number, any[]>>({});
 
   useEffect(() => {
     async function fetchDevices() {
@@ -395,6 +335,53 @@ export default function App() {
 
     fetchDevices();
   }, []);
+
+  // Fetch historical data when a vehicle is selected
+  useEffect(() => {
+    if (!selecionado) return;
+
+    async function fetchHistoricalData() {
+      try {
+        const host = 'web.rastreosat.com.br';
+        const params = new URLSearchParams(window.location.search);
+        const token = params.get('token');
+
+        // Fetch last 6 hours of data
+        const to = new Date();
+        const from = new Date(to.getTime() - 6 * 60 * 60 * 1000);
+
+        const response = await fetch(
+          `https://${host}/api/positions?deviceId=${selecionado}&from=${from.toISOString()}&to=${to.toISOString()}`,
+          { headers: { authorization: 'Bearer ' + token } }
+        );
+
+        const positions: Position[] = await response.json();
+
+        // Transform positions to chart format
+        const chartData = positions.map(pos => {
+          const attrs = pos.attributes ?? {};
+          const tempC = attrs.temp1 ?? attrs.temperature ?? attrs.bleTemp1;
+          const door = attrs.door ?? attrs.io2 ?? 0;
+
+          return {
+            ts: new Date(pos.fixTime || pos.serverTime),
+            tempC: typeof tempC === 'number' ? tempC : parseFloat(tempC) || 0,
+            door: typeof door === 'number' ? door : parseInt(door) || 0,
+            fan: 1
+          };
+        }).filter(d => !isNaN(d.tempC)); // Filter out invalid temperatures
+
+        setHistoricalData(prev => ({
+          ...prev,
+          [selecionado]: chartData
+        }));
+      } catch (err) {
+        console.error('Error fetching historical data:', err);
+      }
+    }
+
+    fetchHistoricalData();
+  }, [selecionado]);
 
   if (loading) {
     return (
@@ -445,7 +432,7 @@ export default function App() {
           <FleetTable data={fleet} onSelect={(id) => { setSelecionado(id); setTab("detail"); }} />
         </TabsContent>
         <TabsContent value="detail" className="mt-4">
-          {selecionado && <VehicleDetail id={selecionado} fleet={fleet} />}
+          {selecionado && <VehicleDetail id={selecionado} fleet={fleet} historicalData={historicalData} />}
         </TabsContent>
       </Tabs>
     </div>
