@@ -1,5 +1,5 @@
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,12 +19,37 @@ import {
 } from "recharts";
 
 /**
- * Traccar – React Preview: Dashboard de Temperatura (Mock)
+ * Traccar – React Preview: Dashboard de Temperatura
  * - Faixa alvo: -18 a -7 °C
  * - Alarmes: leve ≥ -6; médio ≥ -1; grave ≥ +10
- * - Sem dependência de backend; dados *mock* abaixo
  * - Layout: Fleet Overview + Detalhe do Veículo
  */
+
+// ---------- Types ----------
+interface Device {
+  id: number;
+  name: string;
+  uniqueId: string;
+  status: string;
+  lastUpdate: string;
+  positionId?: number;
+  groupId?: number;
+  phone?: string;
+  model?: string;
+  contact?: string;
+  category?: string;
+  disabled?: boolean;
+  attributes?: Record<string, any>;
+}
+
+interface FleetItem {
+  id: number;
+  placa: string;
+  last: Date;
+  tempC: number;
+  door: number;
+  setpoint: number;
+}
 
 // ---------- Util ----------
 function classificarTemp(tempC: number): "ok" | "leve" | "medio" | "grave" {
@@ -48,14 +73,22 @@ const cores: Record<string, string> = {
   acima_da_faixa: "bg-yellow-500",
 };
 
-// ---------- Mock Data ----------
-const now = new Date("2025-09-30T21:10:00-03:00");
+// ---------- Data Transformation ----------
+function transformDeviceToFleetItem(device: Device): FleetItem {
+  // Extract temperature from attributes (adjust attribute name as needed)
+  const tempC = device.attributes?.temp1 ?? device.attributes?.temperature ?? 0;
+  const door = device.attributes?.door ?? device.attributes?.io2 ?? 0;
+  const setpoint = device.attributes?.setpoint ?? device.attributes?.targetTemp ?? -15;
 
-const fleet = [
-  { id: 101, placa: "ABC1D23", last: new Date(now), tempC: -12.4, door: 0, setpoint: -15 },
-  { id: 102, placa: "EFG2H45", last: new Date(+now - 60_000), tempC: -3.1, door: 0, setpoint: -12 },
-  { id: 103, placa: "IJK3L67", last: new Date(+now - 120_000), tempC: 11.2, door: 1, setpoint: -10 },
-];
+  return {
+    id: device.id,
+    placa: device.name || device.uniqueId,
+    last: new Date(device.lastUpdate),
+    tempC: typeof tempC === 'number' ? tempC : parseFloat(tempC) || 0,
+    door: typeof door === 'number' ? door : parseInt(door) || 0,
+    setpoint: typeof setpoint === 'number' ? setpoint : parseFloat(setpoint) || -15,
+  };
+}
 
 function gerarSerieTemp({ inicio, pontos = 72, media = -12, ruido = 1.2 }:{inicio:string|Date,pontos?:number,media?:number,ruido?:number}) {
   const out: any[] = []; let t = new Date(inicio);
@@ -172,9 +205,9 @@ function FleetTable({ data, onSelect }: { data: any[]; onSelect: (id: number) =>
   );
 }
 
-function VehicleDetail({ id }: { id: number }) {
+function VehicleDetail({ id, fleet }: { id: number; fleet: FleetItem[] }) {
   const vehicle = fleet.find((v) => v.id === id)!;
-  const serie = seriesPorVeiculo[id].map((p) => ({ ...p, label: new Date(p.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) }));
+  const serie = seriesPorVeiculo[id]?.map((p) => ({ ...p, label: new Date(p.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })) || [];
   const tempAtual = vehicle.tempC;
   const kpis = useMemo(() => {
     const temps = serie.map((s: any) => s.tempC);
@@ -287,8 +320,68 @@ function VehicleDetail({ id }: { id: number }) {
 }
 
 export default function App() {
-  const [selecionado, setSelecionado] = useState<number | null>(101);
+  const [selecionado, setSelecionado] = useState<number | null>(null);
   const [tab, setTab] = useState("fleet");
+  const [fleet, setFleet] = useState<FleetItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchDevices() {
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await fetch('/api/devices');
+
+        const devices: Device[] = await response.json();
+        const fleetData = devices.map(transformDeviceToFleetItem);
+        setFleet(fleetData);
+
+        // Auto-select first device if none selected
+        if (fleetData.length > 0 && !selecionado) {
+          setSelecionado(fleetData[0].id);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to fetch devices');
+        console.error('Error fetching devices:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchDevices();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+        <div className="flex items-center justify-center py-12">
+          <div className="text-center">
+            <RefreshCcw className="h-8 w-8 animate-spin mx-auto mb-4 text-gray-400" />
+            <p className="text-gray-500">Carregando dados...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-red-600" />
+              <div>
+                <h3 className="font-semibold text-red-900">Erro ao carregar dados</h3>
+                <p className="text-sm text-red-700 mt-1">{error}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
@@ -308,14 +401,14 @@ export default function App() {
           <FleetTable data={fleet} onSelect={(id) => { setSelecionado(id); setTab("detail"); }} />
         </TabsContent>
         <TabsContent value="detail" className="mt-4">
-          {selecionado && <VehicleDetail id={selecionado} />}
+          {selecionado && <VehicleDetail id={selecionado} fleet={fleet} />}
         </TabsContent>
       </Tabs>
 
       <div className="text-xs text-gray-500">
         <p>
-          *Mock preview.* Para conectar ao Traccar, substituir as fontes de dados por chamadas à API
-          (<code>/api/positions</code>, <code>/api/events</code>) e mapear atributos (ex.: <code>attributes.temp1 → tempC</code>).
+          Conectado à API Traccar. Dados obtidos de <code>/api/devices</code>.
+          Atributos mapeados: <code>attributes.temp1 → tempC</code>, <code>attributes.door → door</code>.
         </p>
       </div>
     </div>
