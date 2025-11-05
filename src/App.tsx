@@ -163,7 +163,7 @@ function GaugeTemp({ temp }: { temp: number }) {
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className="mt-2 text-xl font-semibold">{temp.toFixed(1)} °C</div>
+      <div className="mt-2 text-xl font-semibold">{temp && temp.toFixed(1)} °C</div>
       <div className="text-sm"><NivelBadge nivel={nivel as any} /></div>
     </div>
   );
@@ -448,13 +448,6 @@ export default function App() {
           {selecionado && <VehicleDetail id={selecionado} fleet={fleet} />}
         </TabsContent>
       </Tabs>
-
-      <div className="text-xs text-gray-500">
-        <p>
-          Conectado à API Traccar. Dados obtidos de <code>/api/devices</code> e <code>/api/positions</code>.
-          Atributos mapeados: <code>position.attributes.temp1 → tempC</code>, <code>position.attributes.door → door</code>.
-        </p>
-      </div>
     </div>
   );
 }
