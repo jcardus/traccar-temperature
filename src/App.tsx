@@ -99,7 +99,7 @@ function transformDeviceToFleetItem(device: Device, position?: Position): FleetI
   const posAttrs = position?.attributes ?? {};
   const devAttrs = device.attributes ?? {};
 
-  const tempC = posAttrs.temp1 ?? posAttrs.temperature ?? devAttrs.temp1 ?? devAttrs.bleTemp1;
+  const tempC = posAttrs.temp1 || posAttrs.bleTemp1;
   const door = posAttrs.door ?? posAttrs.io2 ?? devAttrs.door ?? devAttrs.io2 ?? 0;
   const setpoint = posAttrs.setpoint ?? posAttrs.targetTemp ?? devAttrs.setpoint ?? devAttrs.targetTemp ?? -15;
 
