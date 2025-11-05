@@ -356,7 +356,7 @@ export default function App() {
         setError(null);
 
         // Fetch both devices and positions in parallel
-        const host = import.meta.env.VITE_API_HOST || 'dash.frotaweb.com';
+        const host = import.meta.env.VITE_API_HOST || 'web.rastreosat.com.br';
         const params = new URLSearchParams(window.location.search);
         const token = params.get('token');
         const [devicesResponse, positionsResponse] = await Promise.all([
