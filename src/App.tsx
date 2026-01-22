@@ -383,12 +383,16 @@ export default function App() {
           const tempC = attrs.temp1 ?? attrs.temperature ?? attrs.bleTemp1;
           const door = attrs.door ?? attrs.io2 ?? 0;
 
-          return {
+          const result = {
             ts: new Date(pos.fixTime || pos.serverTime),
             tempC: typeof tempC === 'number' ? tempC : parseFloat(tempC) || 0,
             door: typeof door === 'number' ? door : parseInt(door) || 0,
             fan: 1
           };
+          if (Math.trunc(result.tempC) === 327) {
+            delete result.tempC
+          }
+          return result
         }).filter(d => !isNaN(d.tempC)); // Filter out invalid temperatures
 
         setHistoricalData(prev => ({
