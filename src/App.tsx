@@ -262,7 +262,7 @@ function VehicleDetail({ id, fleet, historicalData }: { id: number; fleet: Fleet
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={serie} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="label" interval={5} />
+                <XAxis dataKey="label" />
                 <YAxis domain={[-25, 20]} tickFormatter={(v) => `${Number(v).toFixed(1)}°`} />
                 <Tooltip formatter={(v: any) => `${Number(v).toFixed(1)} °C`} labelFormatter={(l) => `Hora: ${l}`} />
                 {/* Bandas da faixa alvo */}
